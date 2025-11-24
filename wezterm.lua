@@ -81,7 +81,7 @@ config.keys = {
     {
         mods = "LEADER",
         key = "h",
-        action = wezterm.action.ActivatePaneDirection "Left"
+        action = wezterm.action.ActivatePaneDirection "Left"    
     },
     {
         mods = "LEADER",
@@ -163,11 +163,39 @@ wezterm.on("update-right-status", function(window, _)
     })
 end)
 
-wezterm.on("update-right-status", function(window, pane)
-  local date = wezterm.strftime("%d-%m-%Y %H:%M") -- time format
+local function get_vpn_status()
+  local success_wg, out_wg = wezterm.run_child_process({
+    "sh", "-c", "wg show 2>/dev/null"
+  })
 
+  if success_wg and out_wg and out_wg:match("interface: (%S+)") then
+    local iface = out_wg:match("interface: (%S+)")
+    return "VPN: ON (" .. iface .. ")", "#98971a"
+  end
+
+  local success_ip, out_ip = wezterm.run_child_process({
+    "sh", "-c", "ip -o link show | awk -F': ' '{print $2}'"
+  })
+
+  if success_ip and out_ip then
+    for line in out_ip:gmatch("[^\r\n]+") do
+      if line:match("^proton") or line:match("^pvpn") then
+        return "VPN: ON (" .. line .. ")", "#98971a"
+      end
+    end
+  end
+
+  return "VPN: OFF", "#cc241d"
+end
+
+wezterm.on("update-right-status", function(window, pane)
+  -- vpn
+  local vpn_text, vpn_color = get_vpn_status()
+
+  -- battery
   local battery_text = ""
   local battery_color = "#756f68"
+
   for _, b in ipairs(wezterm.battery_info()) do
     local charge = b.state_of_charge * 100
     battery_text = string.format("%.0f%%", charge)
@@ -178,14 +206,21 @@ wezterm.on("update-right-status", function(window, pane)
       battery_color = "#bd5f13"
     else
       battery_color = "#13bd1e"
-    end 
-
-    break 
+    end
+    break
   end
 
+  -- date
+  local date = wezterm.strftime("%d-%m-%Y %H:%M")
+
+
   window:set_right_status(wezterm.format({
+    { Foreground = { Color = vpn_color } },
+    { Text = "🔒 " .. vpn_text .. "   " },
+
     { Foreground = { Color = battery_color } },
-    { Text = "🔋 " .. battery_text .. "  " },
+    { Text = "🔋 " .. battery_text .. "   " },
+
     { Foreground = { Color = "#b8bb26" } },
     { Text = "🕒 " .. date .. "  " },
   }))
